@@ -1,0 +1,17 @@
+# Install with:
+#   pip install -r requirements.txt --break-system-packages
+
+opencv-contrib-python>=4.8.0
+numpy>=1.24.0
+flask>=3.0.0
+pillow>=10.0.0
+scikit-learn>=1.3.0
+requests>=2.31.0
+
+# ArcFace engine (required)
+insightface>=0.7.3
+onnxruntime>=1.16.0
+msvc-runtime>=14.29; platform_system == "Windows"
+
+# Text-to-speech announcements (optional)
+pyttsx3>=2.90

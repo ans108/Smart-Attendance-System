@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Login — FaceAttend</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .login-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 2.5rem 2rem;
+      width: 340px;
+      box-shadow: 0 24px 64px rgba(0,0,0,.5);
+    }
+    .login-logo {
+      width: 52px; height: 52px;
+      border-radius: var(--radius-md);
+      background: var(--accent-green-bg);
+      border: 1px solid var(--accent-green-border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent-green);
+      margin: 0 auto 1.2rem;
+    }
+    .login-title {
+      font-size: 1.2rem; font-weight: 700;
+      color: var(--text-primary);
+      text-align: center; margin-bottom: .3rem;
+    }
+    .login-sub {
+      font-size: 12px; color: var(--text-muted);
+      text-align: center; margin-bottom: 1.8rem;
+    }
+    .error-banner {
+      background: var(--accent-red-bg);
+      border: 1px solid rgba(239,68,68,.25);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: var(--accent-red);
+      margin-bottom: 1rem;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .back-link {
+      display: block; text-align: center;
+      margin-top: 1.2rem; font-size: 12px;
+      color: var(--text-muted);
+    }
+    .back-link:hover { color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-logo">
+      <i data-lucide="shield-check" style="width:22px;height:22px"></i>
+    </div>
+    <p class="login-title">Admin Panel</p>
+    <p class="login-sub">FaceAttend — Attendance Management</p>
+
+    {% if error %}
+    <div class="error-banner">
+      <i data-lucide="alert-circle" style="width:14px;height:14px;flex-shrink:0"></i>
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin_login_post') }}">
+      <div class="form-group">
+        <label class="form-label" for="username">Username</label>
+        <input id="username" name="username" type="text" class="form-input"
+               placeholder="admin" autocomplete="username" required autofocus />
+      </div>
+      <div class="form-group" style="margin-bottom:1.5rem">
+        <label class="form-label" for="password">Password</label>
+        <input id="password" name="password" type="password" class="form-input"
+               placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn btn-green btn-full">
+        <i data-lucide="log-in" style="width:14px;height:14px;margin-right:5px;vertical-align:-2px"></i>
+        Sign In
+      </button>
+    </form>
+
+    <a href="{{ url_for('index') }}" class="back-link">← Back to Dashboard</a>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

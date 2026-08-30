@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+.env
+
+# Models
+models/
+insightface_models/
+*.onnx
+
+# Databases
+*.db
+*.sqlite3
+
+# Images (as requested)
+*.jpg
+*.jpeg
+*.png
+*.gif
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — FaceAttend{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+{% include 'setup_banner.html' %}
+
+<!-- ══════════ ATTENDANCE POPUP ══════════════════════════════════════════════ -->
+<div id="att-overlay" role="dialog" aria-modal="true" aria-label="Attendance result"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);
+            backdrop-filter:blur(4px);z-index:9000;
+            align-items:center;justify-content:center">
+
+  <div id="att-popup" style="position:relative;width:300px;background:#13161e;
+       border:1px solid rgba(255,255,255,.1);border-radius:20px;
+       padding:2rem 1.5rem 1.5rem;text-align:center;
+       display:flex;flex-direction:column;align-items:center;gap:.5rem;
+       animation:popup-in .3s cubic-bezier(.34,1.56,.64,1)">
+
+    <div id="att-stripe" style="position:absolute;top:0;left:0;right:0;height:3px;
+         border-radius:20px 20px 0 0;transition:background .2s"></div>
+
+    <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.07"
+         viewBox="0 0 120 120">
+      <circle fill="none" stroke="#fff" stroke-width="1.5" cx="60" cy="60" r="54"/>
+      <circle id="att-ring" fill="none" stroke-linecap="round"
+              cx="60" cy="60" r="54"
+              stroke-dasharray="339.3" stroke-dashoffset="0"
+              style="transform-origin:60px 60px;transform:rotate(-90deg);
+                     transition:stroke .2s"/>
+    </svg>
+
+    <div id="att-icon-wrap" style="width:68px;height:68px;border-radius:50%;
+         display:flex;align-items:center;justify-content:center;
+         margin-bottom:.3rem;position:relative;z-index:1;
+         transition:all .2s;animation:icon-pop .4s cubic-bezier(.34,1.56,.64,1)">
+      <svg id="att-svg-check" width="32" height="32" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+           style="display:none"><polyline points="20 6 9 17 4 12"/></svg>
+      <svg id="att-svg-clock" width="32" height="32" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+           style="display:none"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <svg id="att-svg-x" width="32" height="32" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+           style="display:none"><circle cx="12" cy="12" r="10"/>
+        <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+    </div>
+
+    <p id="att-label" style="font-size:10px;font-weight:700;letter-spacing:1.1px;
+       text-transform:uppercase;position:relative;z-index:1"></p>
+    <p id="att-name"  style="font-size:1.4rem;font-weight:700;color:#e8ecf3;
+       line-height:1.2;position:relative;z-index:1"></p>
+    <p id="att-time"  style="font-size:12px;color:#8b93a7;position:relative;z-index:1"></p>
+    <p id="att-conf"  style="font-size:11px;color:#555d72;position:relative;z-index:1"></p>
+    <p id="att-late"  style="font-size:12px;font-weight:600;position:relative;z-index:1;display:none"></p>
+
+    <button onclick="closePopup()"
+            style="margin-top:.8rem;padding:6px 24px;border-radius:99px;
+                   border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);
+                   color:#8b93a7;font-size:12px;cursor:pointer;
+                   position:relative;z-index:1;font-family:inherit">
+      Dismiss
+    </button>
+  </div>
+</div>
+
+<style>
+@keyframes popup-in{from{opacity:0;transform:scale(.7) translateY(20px)}to{opacity:1;transform:none}}
+@keyframes icon-pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+</style>
+
+<!-- ── Schedule info banner ───────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;
+            background:var(--bg-surface);border:1px solid var(--border);
+            border-radius:var(--radius-md);padding:10px 16px;font-size:12px">
+  <i data-lucide="clock" style="width:14px;height:14px;color:var(--accent-green);flex-shrink:0"></i>
+  <span style="color:var(--text-muted)">
+    On time before <strong style="color:var(--text-primary)">{{ schedule.work_start }}</strong> ·
+    Grace until <strong style="color:#eab308">{{ schedule.grace_end }}</strong> ·
+    Work ends <strong style="color:var(--text-primary)">{{ schedule.work_end }}</strong>
+  </span>
+  <a href="{{ url_for('admin_dashboard') }}" style="margin-left:auto;font-size:11px;color:var(--text-muted)">
+    Edit in Admin →
+  </a>
+</div>
+
+<!-- ── Stat cards ─────────────────────────────────────────────────────────── -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon icon-green"><i data-lucide="user-check"></i></div>
+    <div>
+      <p class="stat-label">Present Today</p>
+      <p class="stat-value" id="stat-present">{{ stats.present }}</p>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:rgba(234,179,8,.12);color:#eab308;border:1px solid rgba(234,179,8,.25)">
+      <i data-lucide="clock-alert"></i>
+    </div>
+    <div>
+      <p class="stat-label">Late Today</p>
+      <p class="stat-value" id="stat-late" style="color:#eab308">{{ stats.late }}</p>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon icon-red"><i data-lucide="user-x"></i></div>
+    <div>
+      <p class="stat-label">Absent</p>
+      <p class="stat-value" id="stat-absent">{{ stats.absent }}</p>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon icon-blue"><i data-lucide="users"></i></div>
+    <div>
+      <p class="stat-label">Total Registered</p>
+      <p class="stat-value" id="stat-total">{{ stats.total_users }}</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Camera + Recent ────────────────────────────────────────────────────── -->
+<div class="dashboard-grid">
+  <section class="card camera-card">
+    <div class="card-header">
+      <h2 class="card-title">
+        <i data-lucide="camera" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px"></i>
+        Live Recognition
+        <span class="badge badge-green" style="margin-left:8px;font-size:10px">ArcFace</span>
+      </h2>
+      <div class="cam-controls">
+        <button class="btn btn-green" id="btn-start" onclick="startCamera()">
+          <i data-lucide="play" style="width:13px;height:13px"></i> Start
+        </button>
+        <button class="btn btn-outline" id="btn-stop" onclick="stopCamera()" disabled>
+          <i data-lucide="square" style="width:13px;height:13px"></i> Stop
+        </button>
+      </div>
+    </div>
+    <div class="camera-frame">
+      <div id="cam-placeholder" class="camera-placeholder">
+        <i data-lucide="camera-off" style="width:40px;height:40px;opacity:.2"></i>
+        <p>Camera inactive</p>
+        <p style="font-size:.75rem;opacity:.4">Click Start to begin</p>
+      </div>
+      <img id="cam-feed" src="" alt="Live feed"
+           style="display:none;width:100%;border-radius:8px"
+           onerror="onFeedError()" />
+    </div>
+  </section>
+
+  <section class="card recent-card">
+    <div class="card-header">
+      <h2 class="card-title">
+        <i data-lucide="clock" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px"></i>
+        Recent Attendance
+      </h2>
+      <a href="{{ url_for('records_page') }}" class="link-muted">View all →</a>
+    </div>
+    <div id="recent-list">
+      {% if stats.recent %}
+        {% for r in stats.recent %}
+        <div class="recent-item">
+          <div class="avatar">{{ r.name[0].upper() }}</div>
+          <div class="recent-body">
+            <span class="recent-name">{{ r.name }}</span>
+            <span class="recent-time">{{ r.time }}</span>
+          </div>
+          {% if r.status in ('late', 'very_late') %}
+            {% if r.status == 'very_late' %}
+              <span class="badge badge-red">Very Late</span>
+            {% else %}
+              <span class="badge badge-amber">Late +{{ r.late_minutes }}m</span>
+            {% endif %}
+          {% else %}
+            <span class="badge badge-green">On Time</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">No attendance recorded today yet.</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<!-- ── Today's table ──────────────────────────────────────────────────────── -->
+<section class="card" style="margin-top:1.5rem">
+  <div class="card-header">
+    <h2 class="card-title">
+      <i data-lucide="table" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px"></i>
+      Today's Records
+    </h2>
+    <a href="/download/csv?date={{ today }}" class="btn btn-outline" style="font-size:.8rem">
+      <i data-lucide="download" style="width:12px;height:12px;margin-right:3px;vertical-align:-1px"></i>
+      Export CSV
+    </a>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Name</th><th>Time</th><th>Status</th><th>Late By</th></tr></thead>
+      <tbody id="today-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let _camActive = false;
+let _feedErrorTimer = null;
+let _cameraStatusTimer = null;
+let _refreshBusy = false;
+let _lastRowsJson = '';
+
+async function startCamera() {
+  if (_camActive) return;
+  document.getElementById('btn-start').disabled = true;
+  try {
+    const r = await fetch('/api/start');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Could not start camera');
+    _camActive = true;
+    document.getElementById('cam-placeholder').style.display = 'none';
+    const img = document.getElementById('cam-feed');
+    img.src = '/video_feed?' + Date.now();
+    img.style.display = 'block';
+    document.getElementById('btn-stop').disabled  = false;
+    showToast('Opening camera...', 'info');
+    connectSSE();
+    startCameraStatusPolling();
+  } catch (err) {
+    document.getElementById('btn-start').disabled = false;
+    showToast(err.message || 'Could not start camera', 'error');
+  }
+}
+
+function stopCamera() {
+  fetch('/api/stop').then(() => {
+    _camActive = false;
+    const img = document.getElementById('cam-feed');
+    img.src = ''; img.style.display = 'none';
+    document.getElementById('cam-placeholder').style.display = 'flex';
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').disabled  = true;
+    stopCameraStatusPolling();
+    disconnectSSE();
+    showToast('Camera stopped', 'info');
+  });
+}
+
+function startCameraStatusPolling() {
+  stopCameraStatusPolling();
+  let announcedLive = false;
+  _cameraStatusTimer = setInterval(async () => {
+    if (!_camActive) return;
+    try {
+      const r = await fetch('/api/recognition_status');
+      const s = await r.json();
+      if (s.camera_state === 'running' && !announcedLive) {
+        announcedLive = true;
+        showToast('Camera is ready', 'success');
+      }
+      if (s.camera_state === 'error') {
+        _camActive = false;
+        stopCameraStatusPolling();
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-stop').disabled = true;
+        disconnectSSE();
+        showToast(s.camera_message || 'Camera could not start', 'error');
+      }
+    } catch (_) {}
+  }, 1000);
+}
+
+function stopCameraStatusPolling() {
+  if (_cameraStatusTimer) {
+    clearInterval(_cameraStatusTimer);
+    _cameraStatusTimer = null;
+  }
+}
+
+function onFeedError() {
+  if (!_camActive || _feedErrorTimer) return;
+  _feedErrorTimer = setTimeout(() => {
+    _feedErrorTimer = null;
+    if (_camActive) {
+      const img = document.getElementById('cam-feed');
+      img.src = '/video_feed?' + Date.now();
+    }
+  }, 900);
+}
+
+let _sse = null;
+function connectSSE() {
+  disconnectSSE();
+  _sse = new EventSource('/api/events');
+  _sse.onmessage = e => {
+    try {
+      const ev = JSON.parse(e.data);
+      showAttPopup(ev);
+      if (ev.type === 'marked') setTimeout(refreshTable, 900);
+    } catch (_) {}
+  };
+  _sse.onerror = () => { disconnectSSE(); if (_camActive) setTimeout(connectSSE, 3000); };
+}
+function disconnectSSE() { if (_sse) { _sse.close(); _sse = null; } }
+
+/* ── Popup ──────────────────────────────────────────────────────────────── */
+const THEMES = {
+  marked:         { glow:'#22c55e', ibg:'rgba(34,197,94,.13)',  icon:'check', label:'Attendance Marked'    },
+  already_marked: { glow:'#38bdf8', ibg:'rgba(56,189,248,.13)', icon:'clock', label:'Already Marked Today' },
+  unknown:        { glow:'#ef4444', ibg:'rgba(239,68,68,.13)',  icon:'x',     label:'Face Not Recognised'  },
+};
+const LATE_THEMES = {
+  late:      { glow:'#eab308', label:'Late Arrival'      },
+  very_late: { glow:'#ef4444', label:'Very Late Arrival' },
+};
+const RING_CIRC = 339.3, POPUP_MS = 4500;
+let _popTimer = null, _ringRaf = null, _ringStart = null;
+
+function showAttPopup(ev) {
+  let t = THEMES[ev.type] || THEMES.unknown;
+  // Override theme for late arrivals on "marked" event
+  if (ev.type === 'marked' && ev.status && ev.status !== 'on_time') {
+    const lt = LATE_THEMES[ev.status];
+    if (lt) { t = { ...t, glow: lt.glow, label: lt.label }; }
+  }
+
+  document.getElementById('att-stripe').style.background = t.glow;
+  document.getElementById('att-ring').style.stroke       = t.glow;
+  const iw = document.getElementById('att-icon-wrap');
+  iw.style.background = t.ibg;
+  iw.style.border     = `2px solid ${t.glow}`;
+  iw.style.color      = t.glow;
+
+  ['att-svg-check','att-svg-clock','att-svg-x'].forEach(id =>
+    document.getElementById(id).style.display = 'none');
+  document.getElementById(
+    t.icon === 'check' ? 'att-svg-check' : t.icon === 'clock' ? 'att-svg-clock' : 'att-svg-x'
+  ).style.display = 'block';
+
+  const lbl = document.getElementById('att-label');
+  lbl.textContent = t.label; lbl.style.color = t.glow;
+  document.getElementById('att-name').textContent = ev.name || '—';
+  document.getElementById('att-time').textContent = ev.time || '';
+  document.getElementById('att-conf').textContent =
+    ev.confidence ? `Match score: ${ev.confidence}%` : '';
+
+  const lateEl = document.getElementById('att-late');
+  if (ev.late_minutes > 0) {
+    lateEl.textContent = `+${ev.late_minutes} min late`;
+    lateEl.style.color = ev.status === 'very_late' ? '#ef4444' : '#eab308';
+    lateEl.style.display = 'block';
+  } else {
+    lateEl.style.display = 'none';
+  }
+
+  const overlay = document.getElementById('att-overlay');
+  overlay.style.display = 'flex';
+  if (localStorage.getItem('faceAttendBrowserVoice') === 'on') speakResult(ev, t.label);
+
+  cancelAnimationFrame(_ringRaf);
+  const ring = document.getElementById('att-ring');
+  ring.style.strokeDashoffset = 0;
+  _ringStart = performance.now();
+  function animRing(ts) {
+    const frac = Math.min((ts - _ringStart) / POPUP_MS, 1);
+    ring.style.strokeDashoffset = frac * RING_CIRC;
+    if (frac < 1) _ringRaf = requestAnimationFrame(animRing);
+  }
+  _ringRaf = requestAnimationFrame(animRing);
+  clearTimeout(_popTimer);
+  _popTimer = setTimeout(closePopup, POPUP_MS);
+}
+
+function closePopup() {
+  clearTimeout(_popTimer); cancelAnimationFrame(_ringRaf);
+  const overlay = document.getElementById('att-overlay');
+  overlay.style.opacity = '0'; overlay.style.transition = 'opacity .2s ease';
+  setTimeout(() => { overlay.style.display = 'none'; overlay.style.opacity = ''; overlay.style.transition = ''; }, 200);
+}
+
+function speakResult(ev, label) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  let msg = {
+    marked:         `Attendance marked. Welcome, ${ev.name}.`,
+    already_marked: `${ev.name}, already marked today.`,
+    unknown:        'Face not recognised. Please try again.',
+  }[ev.type] || label;
+  if (ev.type === 'marked' && ev.late_minutes > 0)
+    msg += ` You are ${ev.late_minutes} minutes late.`;
+  const utt = new SpeechSynthesisUtterance(msg);
+  utt.rate = 1.0; utt.volume = 1.0;
+  const voices = window.speechSynthesis.getVoices();
+  const v = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
+  if (v) utt.voice = v;
+  window.speechSynthesis.speak(utt);
+}
+if (window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
+/* ── Table ──────────────────────────────────────────────────────────────── */
+const STATUS_BADGE = {
+  on_time:   '<span class="badge badge-green">On Time</span>',
+  Present:   '<span class="badge badge-green">On Time</span>',
+  late:      (m) => `<span class="badge badge-amber">Late</span>`,
+  very_late: '<span class="badge badge-red">Very Late</span>',
+};
+
+async function refreshTable() {
+  if (_refreshBusy) return;
+  _refreshBusy = true;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const [rR, sR] = await Promise.all([
+      fetch(`/api/attendance?date=${today}`),
+      fetch('/api/stats'),
+    ]);
+    const rows  = await rR.json();
+    const stats = await sR.json();
+
+    document.getElementById('stat-present').textContent = stats.present;
+    document.getElementById('stat-late').textContent    = stats.late || 0;
+    document.getElementById('stat-absent').textContent  = stats.absent;
+    document.getElementById('stat-total').textContent   = stats.total_users;
+
+    const tbody = document.getElementById('today-tbody');
+    const rowsJson = JSON.stringify(rows);
+    if (rowsJson === _lastRowsJson) return;
+    _lastRowsJson = rowsJson;
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:1.5rem;opacity:.4">No records today yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map((r, i) => {
+      const badge = r.status === 'on_time' || r.status === 'Present'
+        ? '<span class="badge badge-green">On Time</span>'
+        : r.status === 'late'
+          ? `<span class="badge badge-amber">Late</span>`
+          : r.status === 'very_late'
+            ? '<span class="badge badge-red">Very Late</span>'
+            : '<span class="badge badge-green">Present</span>';
+      const lateCol = r.late_minutes > 0
+        ? `<span style="color:#eab308;font-size:12px">+${r.late_minutes} min</span>`
+        : '<span class="muted">—</span>';
+      return `<tr>
+        <td>${i + 1}</td>
+        <td><span class="avatar-sm">${r.name[0].toUpperCase()}</span>${r.name}</td>
+        <td>${r.time}</td>
+        <td>${badge}</td>
+        <td>${lateCol}</td>
+      </tr>`;
+    }).join('');
+  } catch (_) {
+  } finally {
+    _refreshBusy = false;
+  }
+}
+
+refreshTable();
+setInterval(refreshTable, 15000);
+lucide.createIcons();
+</script>
+{% endblock %}

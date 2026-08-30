@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block title %}Attendance Records — FaceAttend{% endblock %}
+{% block page_title %}Attendance Records{% endblock %}
+
+{% block content %}
+
+<!-- ── Filter card ──────────────────────────────────────────────────────────── -->
+<section class="card" style="margin-bottom:1.25rem">
+  <div style="padding:16px 20px;position:relative">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end">
+
+      <div>
+        <label class="form-label">From date</label>
+        <div style="position:relative">
+          <input id="f-from" type="text" class="form-input" readonly placeholder="YYYY-MM-DD"
+                 value="{{ date_from }}" style="cursor:pointer;padding-right:34px"
+                 onclick="toggleCal('from')"/>
+          <svg style="position:absolute;right:9px;top:50%;transform:translateY(-50%);
+                      pointer-events:none;opacity:.45;width:14px;height:14px"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect width="18" height="18" x="3" y="4" rx="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+        </div>
+      </div>
+
+      <div>
+        <label class="form-label">To date</label>
+        <div style="position:relative">
+          <input id="f-to" type="text" class="form-input" readonly placeholder="YYYY-MM-DD"
+                 value="{{ date_to }}" style="cursor:pointer;padding-right:34px"
+                 onclick="toggleCal('to')"/>
+          <svg style="position:absolute;right:9px;top:50%;transform:translateY(-50%);
+                      pointer-events:none;opacity:.45;width:14px;height:14px"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect width="18" height="18" x="3" y="4" rx="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+        </div>
+      </div>
+
+      <div>
+        <label class="form-label">Name</label>
+        <input id="f-name" type="text" class="form-input"
+               placeholder="Search by name…" value="{{ name_query }}"/>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-green" onclick="applyFilter()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" style="margin-right:4px;vertical-align:-1px">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>Filter
+        </button>
+        <button class="btn btn-outline" onclick="clearFilter()">Clear</button>
+      </div>
+    </div>
+
+    <!-- Calendar popup (unchanged from original) -->
+    <div id="cal-popup" style="display:none;position:absolute;z-index:600;margin-top:4px">
+      <div style="background:var(--bg-raised);border:1px solid var(--border-accent);
+                  border-radius:12px;padding:14px 16px;min-width:260px;
+                  box-shadow:0 12px 40px rgba(0,0,0,.55)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <button class="icon-btn" onclick="navMonth(-1)" style="width:26px;height:26px;border-radius:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span id="cal-title" style="font-size:12.5px;font-weight:600;color:var(--text-primary)"></span>
+          <button class="icon-btn" onclick="navMonth(1)" style="width:26px;height:26px;border-radius:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;margin-bottom:3px">
+          <div class="cal-hdr">Su</div><div class="cal-hdr">Mo</div><div class="cal-hdr">Tu</div>
+          <div class="cal-hdr">We</div><div class="cal-hdr">Th</div><div class="cal-hdr">Fr</div>
+          <div class="cal-hdr">Sa</div>
+        </div>
+        <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px"></div>
+        <div style="display:flex;justify-content:space-between;margin-top:10px;
+                    border-top:1px solid var(--border);padding-top:8px">
+          <button class="cal-foot-btn" onclick="setToday()">Today</button>
+          <button class="cal-foot-btn muted" onclick="clearCal()">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Results ──────────────────────────────────────────────────────────────── -->
+<section class="card" style="margin-bottom:1.25rem">
+  <div class="card-header">
+    <h2 class="card-title">
+      <i data-lucide="list" style="width:14px;height:14px;margin-right:5px;vertical-align:-2px"></i>
+      {% if date_from and date_to %}{{ date_from }} → {{ date_to }}
+      {% elif date_from %}From {{ date_from }}
+      {% elif date_to %}Until {{ date_to }}
+      {% elif name_query %}Results for "{{ name_query }}"
+      {% else %}All Records{% endif %}
+    </h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="badge badge-blue">{{ records|length }} entries</span>
+      <a href="/download/csv?{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}x=1"
+         class="btn btn-outline" style="font-size:.8rem">
+        <i data-lucide="download" style="width:12px;height:12px;margin-right:3px;vertical-align:-1px"></i>
+        Export CSV
+      </a>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Name</th><th>Date</th><th>Time</th>
+          <th>Status</th><th>Late By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if records %}
+          {% for rec in records %}
+          <tr>
+            <td class="muted">{{ loop.index }}</td>
+            <td><span class="avatar-sm">{{ rec.name[0].upper() }}</span>{{ rec.name }}</td>
+            <td>{{ rec.date }}</td>
+            <td>{{ rec.time }}</td>
+            <td>
+              <span class="badge {{ status_badge_class(rec.status) }}">
+                {{ status_label(rec.status) }}
+              </span>
+            </td>
+            <td>
+              {% if rec.late_minutes and rec.late_minutes > 0 %}
+                <span style="color:{% if rec.status == 'very_late' %}var(--accent-red){% else %}#eab308{% endif %};font-size:12px">
+                  +{{ rec.late_minutes }} min
+                </span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6" class="empty-row">
+              <i data-lucide="inbox" style="width:28px;height:28px;opacity:.2;display:block;margin:0 auto .5rem"></i>
+              No records found for this filter.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── Late Analysis ────────────────────────────────────────────────────────── -->
+{% if records %}
+<section class="card">
+  <div class="card-header">
+    <h2 class="card-title">
+      <i data-lucide="clock-alert" style="width:14px;height:14px;margin-right:5px;vertical-align:-2px"></i>
+      Late Arrival Analysis
+    </h2>
+    <div style="display:flex;gap:8px;font-size:12px;color:var(--text-muted);align-items:center">
+      <span style="display:flex;align-items:center;gap:4px">
+        <span style="width:10px;height:10px;background:#22c55e;border-radius:2px;display:inline-block"></span>On time
+      </span>
+      <span style="display:flex;align-items:center;gap:4px">
+        <span style="width:10px;height:10px;background:#eab308;border-radius:2px;display:inline-block"></span>Late
+      </span>
+      <span style="display:flex;align-items:center;gap:4px">
+        <span style="width:10px;height:10px;background:#ef4444;border-radius:2px;display:inline-block"></span>Very late
+      </span>
+    </div>
+  </div>
+
+  <!-- Per-student late summary -->
+  <div style="padding:16px 20px">
+    {% set students = {} %}
+    {% for rec in records %}
+      {% if rec.name not in students %}
+        {% set _ = students.update({rec.name: {'on_time':0,'late':0,'very_late':0,'total':0,'max_late':0}}) %}
+      {% endif %}
+      {% set s = students[rec.name] %}
+      {% if rec.status in ('on_time', 'Present') %}
+        {% set _ = s.update({'on_time': s.on_time+1, 'total': s.total+1}) %}
+      {% elif rec.status == 'late' %}
+        {% set _ = s.update({'late': s.late+1, 'total': s.total+1, 'max_late': [s.max_late, rec.late_minutes|int]|max}) %}
+      {% elif rec.status == 'very_late' %}
+        {% set _ = s.update({'very_late': s.very_late+1, 'total': s.total+1, 'max_late': [s.max_late, rec.late_minutes|int]|max}) %}
+      {% endif %}
+    {% endfor %}
+
+    {% if students %}
+    <div style="display:flex;flex-direction:column;gap:14px">
+      {% for name, s in students.items() %}
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="avatar" style="width:26px;height:26px;font-size:11px">{{ name[0].upper() }}</div>
+            <span style="font-size:13px;font-weight:500;color:var(--text-primary)">{{ name }}</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            {% if s.on_time > 0 %}<span class="badge badge-green">{{ s.on_time }}× on time</span>{% endif %}
+            {% if s.late > 0 %}<span class="badge badge-amber">{{ s.late }}× late</span>{% endif %}
+            {% if s.very_late > 0 %}<span class="badge badge-red">{{ s.very_late }}× very late</span>{% endif %}
+            {% if s.max_late > 0 %}<span style="font-size:11px;color:var(--text-muted)">max +{{ s.max_late }}min</span>{% endif %}
+          </div>
+        </div>
+        <!-- Stacked bar -->
+        <div style="height:8px;border-radius:99px;overflow:hidden;background:var(--bg-raised);display:flex">
+          {% if s.total > 0 %}
+            {% set on_pct = (s.on_time / s.total * 100)|round|int %}
+            {% set late_pct = (s.late / s.total * 100)|round|int %}
+            {% set vl_pct = (s.very_late / s.total * 100)|round|int %}
+            {% if on_pct > 0 %}
+              <div style="width:{{ on_pct }}%;background:#22c55e;transition:width .4s"></div>
+            {% endif %}
+            {% if late_pct > 0 %}
+              <div style="width:{{ late_pct }}%;background:#eab308;transition:width .4s"></div>
+            {% endif %}
+            {% if vl_pct > 0 %}
+              <div style="width:{{ vl_pct }}%;background:#ef4444;transition:width .4s"></div>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="empty-state">No data to analyse.</p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+.cal-hdr  { text-align:center;font-size:10px;font-weight:600;color:var(--text-muted);padding:3px 0; }
+.cal-foot-btn { font-size:11px;background:none;border:none;cursor:pointer;font-family:inherit;padding:0; }
+.cal-foot-btn       { color:var(--accent-green); }
+.cal-foot-btn.muted { color:var(--text-muted); }
+.cal-day { text-align:center;font-size:12px;padding:5px 0;border-radius:6px;
+           cursor:pointer;color:var(--text-secondary);transition:background .1s;user-select:none; }
+.cal-day:hover  { background:rgba(255,255,255,.08);color:var(--text-primary); }
+.cal-day.today  { color:var(--accent-green);font-weight:700; }
+.cal-day.selected { background:var(--accent-green)!important;color:#000!important;font-weight:700; }
+.cal-day.in-range { background:rgba(34,197,94,.14);color:var(--text-primary);border-radius:0; }
+.cal-day.range-start { border-radius:6px 0 0 6px!important; }
+.cal-day.range-end   { border-radius:0 6px 6px 0!important; }
+.cal-day.empty { cursor:default;pointer-events:none; }
+</style>
+<script>
+var _calTarget='from', _calYear=new Date().getFullYear(), _calMonth=new Date().getMonth();
+var _fromDate=document.getElementById('f-from').value, _toDate=document.getElementById('f-to').value;
+
+function dateToIso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function isoToDate(s){ return s ? new Date(s+'T00:00:00') : null; }
+
+function toggleCal(target){
+  var popup=document.getElementById('cal-popup');
+  var input=document.getElementById(target==='from'?'f-from':'f-to');
+  if(_calTarget===target&&popup.style.display!=='none'){popup.style.display='none';return;}
+  _calTarget=target;
+  var sv=target==='from'?_fromDate:_toDate;
+  if(sv){var d=isoToDate(sv);_calYear=d.getFullYear();_calMonth=d.getMonth();}
+  else{var now=new Date();_calYear=now.getFullYear();_calMonth=now.getMonth();}
+  popup.style.display='block';
+  popup.style.left=input.offsetLeft+'px';
+  popup.style.top=(input.offsetTop+input.offsetHeight+6)+'px';
+  renderCal();
+}
+
+function navMonth(d){_calMonth+=d;if(_calMonth>11){_calMonth=0;_calYear++;}if(_calMonth<0){_calMonth=11;_calYear--;}renderCal();}
+
+function renderCal(){
+  var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('cal-title').textContent=MONTHS[_calMonth]+' '+_calYear;
+  var first=new Date(_calYear,_calMonth,1),lastDay=new Date(_calYear,_calMonth+1,0).getDate(),startDow=first.getDay();
+  var todayIso=dateToIso(new Date()),fromD=isoToDate(_fromDate),toD=isoToDate(_toDate);
+  var grid=document.getElementById('cal-grid');grid.innerHTML='';
+  for(var i=0;i<startDow;i++)grid.innerHTML+='<div class="cal-day empty"></div>';
+  for(var day=1;day<=lastDay;day++){
+    var iso=dateToIso(new Date(_calYear,_calMonth,day)),dayD=isoToDate(iso),cls='cal-day';
+    if(iso===todayIso)cls+=' today';
+    var isFrom=fromD&&iso===dateToIso(fromD),isTo=toD&&iso===dateToIso(toD);
+    if(isFrom||isTo)cls+=' selected';
+    if(fromD&&toD&&dayD>fromD&&dayD<toD)cls+=' in-range';
+    if(isFrom&&toD)cls+=' range-start';
+    if(isTo&&fromD)cls+=' range-end';
+    grid.innerHTML+='<div class="'+cls+'" onclick="selectDay(\''+iso+'\')">'+day+'</div>';
+  }
+}
+
+function selectDay(iso){
+  if(_calTarget==='from'){_fromDate=iso;document.getElementById('f-from').value=iso;if(_toDate&&_toDate<iso){_toDate='';document.getElementById('f-to').value='';}}
+  else{_toDate=iso;document.getElementById('f-to').value=iso;if(_fromDate&&_fromDate>iso){_fromDate='';document.getElementById('f-from').value='';}}
+  renderCal();document.getElementById('cal-popup').style.display='none';
+}
+function setToday(){selectDay(dateToIso(new Date()));}
+function clearCal(){if(_calTarget==='from'){_fromDate='';document.getElementById('f-from').value='';}else{_toDate='';document.getElementById('f-to').value='';}renderCal();}
+function applyFilter(){
+  var from=document.getElementById('f-from').value.trim(),to=document.getElementById('f-to').value.trim(),name=document.getElementById('f-name').value.trim();
+  var p=new URLSearchParams();
+  if(from)p.set('date_from',from);if(to)p.set('date_to',to);if(name)p.set('name',name);
+  window.location.href='/records'+(p.toString()?'?'+p.toString():'');
+}
+function clearFilter(){window.location.href='/records';}
+
+document.addEventListener('click',function(e){
+  var popup=document.getElementById('cal-popup'),fFrom=document.getElementById('f-from'),fTo=document.getElementById('f-to');
+  if(!popup.contains(e.target)&&e.target!==fFrom&&e.target!==fTo)popup.style.display='none';
+},true);
+
+lucide.createIcons();
+</script>
+{% endblock %}

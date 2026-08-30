@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}Register User — FaceAttend{% endblock %}
+{% block page_title %}Register User{% endblock %}
+
+{% block content %}
+
+{% include 'setup_banner.html' %}
+
+<div class="register-grid">
+
+  <!-- ── Form ────────────────────────────────────────────────────────────── -->
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">
+        <i data-lucide="user-plus" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px"></i>
+        Add New User
+      </h2>
+      <span class="badge badge-green" style="font-size:10px">ArcFace</span>
+    </div>
+
+    <div class="form-body">
+      <div class="form-group">
+        <label for="reg-name" class="form-label">Full Name</label>
+        <input id="reg-name" type="text" class="form-input"
+               placeholder="e.g. Alice Johnson" autocomplete="off" maxlength="80"/>
+        <span class="form-hint">Name will appear on attendance records.</span>
+      </div>
+
+      <button class="btn btn-green btn-full" id="btn-register" onclick="startRegistration()">
+        <i data-lucide="scan-face" style="width:14px;height:14px;margin-right:5px;vertical-align:-2px"></i>
+        Begin Face Capture
+      </button>
+
+      <div id="reg-cam-wrap" style="display:none;margin-top:1rem">
+        <div class="camera-frame" style="aspect-ratio:4/3;margin:0;position:relative">
+          <div id="reg-placeholder" class="camera-placeholder">
+            <i data-lucide="loader" style="width:32px;height:32px;opacity:.3;animation:spin 1s linear infinite"></i>
+            <p style="font-size:12px">Opening camera…</p>
+          </div>
+          <img id="reg-feed-img" src="" alt="Registration camera feed"
+               style="display:none;width:100%;border-radius:8px;position:absolute;inset:0"
+               onload="onRegFeedLoad()" onerror="onRegFeedError()"/>
+        </div>
+
+        <div style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:5px">
+            <span id="prog-label">Waiting for face…</span>
+            <span id="prog-count">0 / 8</span>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="prog-bar" style="width:0%;transition:width .3s ease"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="steps-guide" id="steps-guide">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-desc">
+            <strong>Enter name</strong>
+            <span>Type the full name above.</span>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-desc">
+            <strong>Face the camera</strong>
+            <span>Look directly at the lens — stay still.</span>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-desc">
+            <strong>8 samples captured</strong>
+            <span>ArcFace extracts a 512-d face embedding.</span>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-desc">
+            <strong>Ready instantly</strong>
+            <span>No training needed — recognition starts immediately.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Registered users ─────────────────────────────────────────────────── -->
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">
+        <i data-lucide="users" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px"></i>
+        Registered Users
+      </h2>
+      <span class="badge badge-blue" id="user-count">{{ users|length }}</span>
+    </div>
+
+    <div id="users-list">
+      {% if users %}
+        {% for u in users %}
+        <div class="user-row" id="user-row-{{ u.id }}">
+          <div class="avatar">{{ u.name[0].upper() }}</div>
+          <div class="user-info">
+            <span class="user-name">{{ u.name }}</span>
+            <span class="user-meta">Label {{ u.label }} · {{ u.created[:10] }}</span>
+          </div>
+          <button class="icon-btn icon-btn-danger" title="Delete"
+                  data-user-id="{{ u.id }}" data-user-name="{{ u.name }}"
+                  onclick="deleteUserFromButton(this)">
+            <i data-lucide="trash-2" style="width:13px;height:13px"></i>
+          </button>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="empty-state">No users registered yet.</p>
+      {% endif %}
+    </div>
+  </section>
+
+</div>
+
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let _progPolling = null;
+let _regName = '';
+let _embeddingStartedAt = 0;
+
+async function startRegistration() {
+  // Check model status first
+  const statusR = await fetch('/api/model_status');
+  const statusD = await statusR.json();
+  if (!statusD.ready) {
+    showToast('ArcFace model not ready. See the red banner above for setup steps.', 'error', 5000);
+    return;
+  }
+
+  const name = document.getElementById('reg-name').value.trim();
+  if (!name) { showToast('Please enter a name.', 'error'); return; }
+
+  _regName = name;
+  const btn = document.getElementById('btn-register');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Capturing…';
+
+  try {
+    const r = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const d = await r.json();
+    if (!r.ok) { showToast(d.error || 'Failed', 'error'); resetBtn(); return; }
+
+    showToast(d.message, 'success');
+    document.getElementById('reg-cam-wrap').style.display = 'block';
+    document.getElementById('steps-guide').style.display  = 'none';
+
+    const img = document.getElementById('reg-feed-img');
+    img.src = '/reg_feed?' + Date.now();
+    img.style.display = 'block';
+    document.getElementById('reg-placeholder').style.display = 'none';
+
+    startProgressPolling();
+  } catch(e) {
+    showToast('Network error', 'error');
+    resetBtn();
+  }
+}
+
+function onRegFeedLoad() {}
+function onRegFeedError() {}
+
+function startProgressPolling() {
+  clearInterval(_progPolling);
+  _progPolling = setInterval(async () => {
+    try {
+      const r = await fetch('/api/reg_progress');
+      const d = await r.json();
+
+      document.getElementById('prog-bar').style.width    = d.pct + '%';
+      document.getElementById('prog-count').textContent  = `${d.captured} / ${d.total}`;
+
+      if (d.status === 'starting') {
+        document.getElementById('prog-label').textContent = 'Opening camera…';
+        document.getElementById('prog-bar').style.background = '#38bdf8';
+      }
+      if (d.status === 'running') {
+        document.getElementById('prog-bar').style.background = '';
+        document.getElementById('prog-label').textContent =
+          d.captured > 0 ? 'Capturing samples…' : 'Face the camera…';
+      }
+      if (d.status === 'embedding') {
+        if (!_embeddingStartedAt) _embeddingStartedAt = Date.now();
+        document.getElementById('prog-label').textContent = d.message || 'Extracting ArcFace embedding…';
+        document.getElementById('prog-bar').style.background = '#a855f7';
+        if (Date.now() - _embeddingStartedAt > 25000) {
+          clearInterval(_progPolling);
+          showToast('Embedding took too long. Please try again with brighter light.', 'error', 6000);
+          try { await fetch('/api/register_cancel', { method: 'POST' }); } catch (_) {}
+          document.getElementById('prog-label').textContent = 'Embedding timed out. Try again.';
+          document.getElementById('prog-bar').style.background = '#ef4444';
+          setTimeout(() => finishRegistration(false), 2200);
+        }
+      }
+      if (d.status === 'done') {
+        clearInterval(_progPolling);
+        _embeddingStartedAt = 0;
+        document.getElementById('prog-label').textContent = 'Embedding saved — ready!';
+        document.getElementById('prog-bar').style.width = '100%';
+        setTimeout(() => pollForUser(_regName), 1500);
+      }
+      if (d.status === 'duplicate') {
+        clearInterval(_progPolling);
+        const existing = d.dup_name || 'an existing user';
+        showToast(`Face already registered as "${existing}"`, 'error');
+        document.getElementById('prog-label').textContent = `Already registered as: ${existing}`;
+        document.getElementById('prog-bar').style.background = '#ef4444';
+        document.getElementById('prog-bar').style.width = '100%';
+        setTimeout(() => finishRegistration(false), 2500);
+      }
+      if (d.status === 'model_error') {
+        clearInterval(_progPolling);
+        const msg = d.message || 'ArcFace model not loaded.';
+        showToast(msg, 'error', 6000);
+        document.getElementById('prog-label').textContent = '⚠ ' + msg;
+        document.getElementById('prog-bar').style.background = '#ef4444';
+        document.getElementById('prog-bar').style.width = '100%';
+        setTimeout(() => finishRegistration(false), 5000);
+      }
+      if (d.status === 'error') {
+        clearInterval(_progPolling);
+        _embeddingStartedAt = 0;
+        const errMsg = d.message || 'Registration failed — try again';
+        showToast(errMsg, 'error');
+        document.getElementById('prog-label').textContent = errMsg;
+        document.getElementById('prog-bar').style.background = '#ef4444';
+        setTimeout(() => finishRegistration(false), 2500);
+      }
+    } catch(_) {}
+  }, 900);
+}
+
+async function pollForUser(name, attempts = 0) {
+  const r = await fetch('/api/users');
+  const users = await r.json();
+  const found = users.find(u => u.name.toLowerCase() === name.toLowerCase());
+  if (found) {
+    showToast(`${name} registered with ArcFace!`, 'success');
+    refreshUserList(users);
+    finishRegistration(true);
+  } else {
+    if (attempts > 10) {
+      finishRegistration(true);
+      return;
+    }
+    setTimeout(() => pollForUser(name, attempts + 1), 1000);
+  }
+}
+
+function finishRegistration(success) {
+  clearInterval(_progPolling);
+  _embeddingStartedAt = 0;
+  document.getElementById('reg-feed-img').src = '';
+  document.getElementById('reg-feed-img').style.display = 'none';
+  document.getElementById('reg-placeholder').style.display = 'flex';
+  document.getElementById('reg-cam-wrap').style.display = 'none';
+  document.getElementById('steps-guide').style.display = 'flex';
+  document.getElementById('prog-bar').style.width = '0%';
+  document.getElementById('prog-bar').style.background = '';
+  document.getElementById('prog-count').textContent = '0 / 8';
+  if (success) document.getElementById('reg-name').value = '';
+  resetBtn();
+}
+
+function resetBtn() {
+  const btn = document.getElementById('btn-register');
+  btn.disabled = false;
+  btn.innerHTML = '<i data-lucide="scan-face" style="width:14px;height:14px;margin-right:5px;vertical-align:-2px"></i>Begin Face Capture';
+  lucide.createIcons();
+}
+
+function refreshUserList(users) {
+  document.getElementById('user-count').textContent = users.length;
+  const list = document.getElementById('users-list');
+  if (!users.length) {
+    list.innerHTML = '<p class="empty-state">No users registered yet.</p>';
+    return;
+  }
+  list.innerHTML = users.map(u => `
+    <div class="user-row" id="user-row-${u.id}">
+      <div class="avatar">${u.name[0].toUpperCase()}</div>
+      <div class="user-info">
+        <span class="user-name">${u.name}</span>
+        <span class="user-meta">Label ${u.label} · ${u.created.slice(0,10)}</span>
+      </div>
+      <button class="icon-btn icon-btn-danger" title="Delete"
+              data-user-id="${u.id}" data-user-name="${escapeHtml(u.name)}"
+              onclick="deleteUserFromButton(this)">
+        <i data-lucide="trash-2" style="width:13px;height:13px"></i>
+      </button>
+    </div>`).join('');
+  lucide.createIcons();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function deleteUserFromButton(btn) {
+  deleteUser(parseInt(btn.dataset.userId), btn.dataset.userName || '');
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`Delete ${name} and all their attendance records?`)) return;
+  const r = await fetch('/api/delete_user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: id }),
+  });
+  if (r.ok) {
+    document.getElementById(`user-row-${id}`)?.remove();
+    showToast(`${name} deleted`, 'info');
+    const ur = await fetch('/api/users');
+    refreshUserList(await ur.json());
+  }
+}
+
+lucide.createIcons();
+</script>
+{% endblock %}
