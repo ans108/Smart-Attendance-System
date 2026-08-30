@@ -7,6 +7,14 @@ Downloads ~350MB from GitHub to:  insightface_models/models/buffalo_l/
 
 import os, sys, zipfile, shutil
 import requests
+import io
+
+# Force UTF-8 encoding for standard output on Windows to support box-drawing characters
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 BASE_URL   = "https://github.com/deepinsight/insightface/releases/download/v0.7"
 MODEL_NAME = "buffalo_l"
